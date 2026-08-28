@@ -18,3 +18,6 @@ __pycache__/
 *.zip
 *.tar.gz
 *.rar
+data/raw/
+data/processed/images/
+data/processed/labels/
