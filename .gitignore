@@ -1,0 +1,20 @@
+# 数据集原始文件（体积大，不入库）
+data/raw/
+data/processed/images/
+data/processed/labels/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 压缩包
+*.zip
+*.tar.gz
+*.rar
