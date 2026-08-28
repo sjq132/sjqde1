@@ -1,0 +1,19 @@
+# 大数据不入库
+data/raw/
+data/processed/images/
+data/processed/labels/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 权重与大输出
+*.pt
+*.pth
+*.onnx
+runs/
+
+# 环境
+.venv/
+env/
