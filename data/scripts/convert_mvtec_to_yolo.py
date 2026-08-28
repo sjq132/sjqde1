@@ -1,11 +1,13 @@
+# -*- coding: utf-8 -*-
 import cv2
 from pathlib import Path
+from collections import Counter
 
-# 自动定位项目根目录
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent.parent
 
 RAW = ROOT / "data" / "raw" / "mvtec_ad"
+IMG_DIR = ROOT / "data" / "processed" / "images"
 LAB_DIR = ROOT / "data" / "processed" / "labels"
 
 CLASSES = sorted([
@@ -14,6 +16,10 @@ CLASSES = sorted([
     "transistor", "wood", "zipper"
 ])
 CLASS2ID = {name: idx for idx, name in enumerate(CLASSES)}
+
+
+def log(msg):
+    print(msg, flush=True)
 
 
 def mask_to_bbox(mask_path: Path):
@@ -30,7 +36,6 @@ def mask_to_bbox(mask_path: Path):
 
 
 def find_ground_truth(split_dir: Path, cls_name: str):
-    """兼容 MVTec 两种目录结构"""
     d = split_dir / cls_name / "ground_truth"
     if d.exists():
         return d
@@ -43,15 +48,19 @@ def find_ground_truth(split_dir: Path, cls_name: str):
 
 
 def main():
+    log(f"RAW exists: {RAW.exists()}")
+    log(f"IMG_DIR exists: {IMG_DIR.exists()}")
+
     if not RAW.exists():
-        print(f"[错误] 找不到数据集：{RAW}")
+        log("[错误] 找不到数据集")
         return
-    if not (ROOT / "data" / "processed" / "images").exists():
-        print("[错误] 请先跑 preprocess.py")
+    if not IMG_DIR.exists():
+        log("[错误] 请先跑 preprocess.py")
         return
 
     LAB_DIR.mkdir(parents=True, exist_ok=True)
     count = 0
+    fail = 0
 
     for split in ["train", "test", "val"]:
         split_dir = RAW / split
@@ -65,14 +74,30 @@ def main():
             for mask_path in gt_dir.glob("*.png"):
                 bbox = mask_to_bbox(mask_path)
                 if bbox is None:
+                    fail += 1
                     continue
                 out_txt = LAB_DIR / mask_path.with_suffix(".txt").name
                 cx, cy, nw, nh = bbox
-                with open(out_txt, "w") as f:
+                with open(out_txt, "w", encoding="utf-8") as f:
                     f.write(f"{cls_id} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}\n")
                 count += 1
 
-    print(f"[完成] 生成 YOLO 标注数：{count} -> {LAB_DIR}")
+    log(f"[完成] 生成标注数: {count}, 无标注/失败: {fail}")
+
+    # 类别统计
+    c = Counter()
+    for txt in LAB_DIR.rglob("*.txt"):
+        for line in open(txt, encoding="utf-8"):
+            parts = line.strip().split()
+            if parts:
+                c[parts[0]] += 1
+
+    stat_path = LAB_DIR / "class_count.txt"
+    with open(stat_path, "w", encoding="utf-8") as f:
+        f.write("class_id,class_name,count\n")
+        for cls_id in sorted(c.keys(), key=int):
+            f.write(f"{cls_id},{CLASSES[int(cls_id)]},{c[cls_id]}\n")
+    log(f"类别统计: {stat_path}")
 
 
 if __name__ == "__main__":
