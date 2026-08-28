@@ -1,22 +1,65 @@
 # 数据集说明
 
-本项目的全部数据准备工作说明如下。
-
-## 1. 主数据集：MVTec AD（公开数据集）
+## 主数据集：MVTec AD
 
 | 项目 | 说明 |
 |------|------|
-| 数据集名称 | MVTec Anomaly Detection Dataset (MVTec AD) |
-| 类别数 | 15 类工业对象与纹理 |
-| 规模 | 5354 张高分辨率彩色图像 |
-| 标注 | 提供像素级异常标注（PNG mask） |
-| 来源链接 | https://www.mvtec.com/company/research/datasets/mvtec-ad/ |
-| 下载方式 | 官网注册后免费下载（需同意 CC BY-NC-SA 4.0 许可） |
-| 许可协议 | CC BY-NC-SA 4.0（非商用，课程设计合规） |
+| 名称 | MVTec Anomaly Detection Dataset |
+| 规模 | 5354 张，15 类工业对象 |
+| 标注 | 像素级 PNG mask（本项目转为 YOLO 检测框） |
+| 许可 | CC BY-NC-SA 4.0 |
 
-### 本项目的用途
-- 作为目标检测主训练/测试集，覆盖多类通用工业零部件
-- 将原像素级异常标注（mask）重构为 YOLO 格式检测框（bbox）
+### 下载方式（任选其一）
 
-### 下载与组织
-由于数据集体积较大（约 4.5GB），不直接上传至仓库。请按以下步骤准备：
+- 官网：https://www.mvtec.com/company/research/datasets/mvtec-ad/
+- Kaggle：https://www.kaggle.com/datasets/avdvhh/mvtec-defect-detection-dataset
+- ModelScope：https://www.modelscope.cn/datasets/shimin2023/MVTec_AD
+- OpenDataLab：https://opendatalab.com/OpenDataLab/MVTecAD
+
+下载后解压到 `data/raw/mvtec_ad/`，目录结构：
+data/raw/mvtec_ad/
+├── bottle/
+├── cable/
+├── capsule/
+├── ...（共15类）
+├── train/
+├── test/
+└── ground_truth/
+## 辅助数据集
+
+| 数据集 | 链接 |
+|--------|------|
+| KolektorSDD | https://www.vicos.si/Downloads/KolektorSurface-defect-dataset |
+| PKU-Market-PCB | https://github.com/tangsanli5201/PKU-Market-PCB |
+
+## 预处理
+
+| 脚本 | 功能 |
+|------|------|
+| `scripts/convert_mvtec_to_yolo.py` | 像素 mask → YOLO bbox（cx,cy,w,h） |
+| `scripts/preprocess.py` | resize 640×640 + 归一化 |
+
+运行方式（仓库根目录）：
+bash
+pip install opencv-python numpy
+python data/scripts/preprocess.py
+python data/scripts/convert_mvtec_to_yolo.py
+## 数据划分
+
+训练集 : 验证集 : 测试集 = 7 : 1.5 : 1.5
+
+## 目录结构
+data/
+├── README.md # 本文件
+├── raw/ # 原始数据（.gitignore 排除）
+│ └── mvtec_ad/
+├── processed/ # 预处理结果（.gitignore 排除）
+│ ├── images/
+│ └── labels/
+└── scripts/ # 预处理程序（已提交）
+├── preprocess.py
+└── convert_mvtec_to_yolo.py
+> 原始数据与预处理结果体积较大，不纳入版本控制。通过运行上述脚本可基于下载数据自动重建。
+
+---
+更新日期：2026-08-29
