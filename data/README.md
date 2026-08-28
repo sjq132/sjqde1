@@ -33,3 +33,25 @@
 | `scripts/convert_mvtec_to_yolo.py` | mask → YOLO bbox |
 
 运行（在仓库根目录执行）：
+bash
+python data/scripts/preprocess.py
+python data/scripts/convert_mvtec_to_yolo.py
+## 数据划分
+
+训练集 : 验证集 : 测试集 = 7 : 1.5 : 1.5
+
+## 目录结构
+data/
+├── README.md
+├── .gitignore
+├── raw/ （.gitignore 排除，不上传）
+│ └── mvtec_ad/
+├── processed/ （.gitignore 排除，不上传）
+│ ├── images/
+│ └── labels/
+└── scripts/ （已提交）
+├── preprocess.py
+└── convert_mvtec_to_yolo.py
+> 原始数据与预处理结果体积较大，不纳入版本控制；通过运行脚本可基于下载数据自动重建。
+Commit message：docs(data): 添加数据集说明（MVTec AD 下载+预处理）
+
