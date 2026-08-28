@@ -6,7 +6,7 @@ from collections import Counter
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent.parent
 
-RAW = ROOT / "data" / "raw" / "mvtec_ad"
+RAW = Path(r"C:\mvtec_ad")
 IMG_DIR = ROOT / "data" / "processed" / "images"
 LAB_DIR = ROOT / "data" / "processed" / "labels"
 
