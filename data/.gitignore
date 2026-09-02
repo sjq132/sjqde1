@@ -1,5 +1,28 @@
+# 数据集原始文件（体积大，不入库；见 data/README.md）
 raw/
+
+# 预处理后的大数据（体积大，不入库；可本地重建）
 processed/images/
 processed/labels/
+
+# Python 缓存
 __pycache__/
 *.pyc
+*.pyo
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 压缩包
+*.zip
+*.tar.gz
+*.rar
+
+# 环境
+.env
+.venv/
+venv/
+.envs/

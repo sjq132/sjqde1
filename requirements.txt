@@ -1,0 +1,6 @@
+flask>=3.0
+ultralytics>=8.2
+Pillow>=10.0
+numpy
+opencv-python-headless
+pytest

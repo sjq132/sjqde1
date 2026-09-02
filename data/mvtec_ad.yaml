@@ -1,0 +1,31 @@
+# MVTec AD 数据集配置（工业缺陷检测，15 个对象类别）
+# 路径相对于仓库根目录
+path: data/processed
+train: train/images
+val: val/images
+
+# 类别数：MVTec AD 共 15 个对象类别（正常/异常由标签文件体现）
+nc: 15
+
+# 类别名称（与 MVTec AD 官方一致）
+names:
+  0: bottle
+  1: cable
+  2: capsule
+  3: carpet
+  4: grid
+  5: hazelnut
+  6: leather
+  7: metal_nut
+  8: pill
+  9: screw
+  10: tile
+  11: toothbrush
+  12: transistor
+  13: wood
+  14: zipper
+
+# 说明：
+# - 每类含 "good"（正常）与若干缺陷子类别
+# - 标注格式：YOLO（每张图对应 .txt，class_id cx cy w h）
+# - 异常检测也可走 1-class（仅正常训练），此处按多分类检测配置以覆盖更多技术方向

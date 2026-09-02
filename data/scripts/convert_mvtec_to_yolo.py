@@ -1,103 +1,86 @@
-# -*- coding: utf-8 -*-
-import cv2
+"""
+MVTec AD -> YOLO 格式转换（辅助脚本）
+
+MVTec AD 官方提供的是 ground_truth 掩码（缺陷定位），本脚本将其转为 YOLO 检测框：
+  每个缺陷掩码 -> 外接矩形 -> (class_id, cx, cy, w, h)
+
+类别映射：MVTec AD 15 个对象类别，见 data/mvtec_ad.yaml 的 names。
+注意：MVTec AD 原始定位任务是"异常/缺陷分割"，此处为覆盖"目标检测"技术方向，
+      将掩码转为外接框做检测标注；若只需分类可直接用 train.py --task classify。
+
+用法:
+    python data/scripts/convert_mvtec_to_yolo.py
+        --src data/raw/mvtec_ad
+        --dst data/processed
+"""
+
+import argparse
 from pathlib import Path
-from collections import Counter
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT = SCRIPT_DIR.parent.parent
+import yaml
 
-RAW = Path(r"C:\mvtec_ad")
-IMG_DIR = ROOT / "data" / "processed" / "images"
-LAB_DIR = ROOT / "data" / "processed" / "labels"
+ROOT = Path(__file__).resolve().parent.parent.parent
+DATASET_YAML = ROOT / "data" / "mvtec_ad.yaml"
 
-CLASSES = sorted([
-    "bottle", "cable", "capsule", "carpet", "grid", "hazelnut",
-    "leather", "metal_nut", "pill", "screw", "tile", "toothbrush",
-    "transistor", "wood", "zipper"
-])
-CLASS2ID = {name: idx for idx, name in enumerate(CLASSES)}
+# 对象类别 -> class_id（与 mvtec_ad.yaml 保持一致）
+OBJECTS = [
+    "bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather",
+    "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor",
+    "wood", "zipper",
+]
+NAME2ID = {n: i for i, n in enumerate(OBJECTS)}
 
 
-def log(msg):
-    print(msg, flush=True)
-
-
-def mask_to_bbox(mask_path: Path):
-    mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-    if mask is None:
+def mask_to_box(mask_path: Path, img_w: int, img_h: int):
+    """读取单通道缺陷掩码，返回外接矩形 (cx, cy, w, h) 归一化。"""
+    from PIL import Image
+    import numpy as np
+    mask = np.array(Image.open(mask_path).convert("L"))
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
         return None
-    _, bin_mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(bin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    cnt = max(contours, key=cv2.contourArea)
-    x, y, w, h = cv2.boundingRect(cnt)
-    return (x + w / 2) / 640, (y + h / 2) / 640, w / 640, h / 640
+    x1, y1, x2, y2 = xs.min(), ys.min(), xs.max(), ys.max()
+    cx = ((x1 + x2) / 2) / img_w
+    cy = ((y1 + y2) / 2) / img_h
+    w = (x2 - x1) / img_w
+    h = (y2 - y1) / img_h
+    return cx, cy, w, h
 
 
-def find_ground_truth(split_dir: Path, cls_name: str):
-    d = split_dir / cls_name / "ground_truth"
-    if d.exists():
-        return d
-    cand = split_dir / cls_name
-    if cand.exists():
-        for sub in cand.rglob("ground_truth"):
-            if sub.is_dir():
-                return sub
-    return None
+def convert(src: Path, dst: Path):
+    (dst / "labels").mkdir(parents=True, exist_ok=True)
+    for obj in OBJECTS:
+        gt_dir = src / obj / "ground_truth"
+        if not gt_dir.exists():
+            continue
+        for mask_path in gt_dir.glob("**/*.png"):
+            # 掩码文件名形如：<defect_type>/<name>_mask.png
+            img_name = mask_path.stem.replace("_mask", "")
+            img_path = mask_path.parent.parent / "test" / mask_path.parent.name / f"{img_name}.png"
+            if not img_path.exists():
+                continue
+            from PIL import Image
+            with Image.open(img_path) as im:
+                w, h = im.size
+            box = mask_to_box(mask_path, w, h)
+            if not box:
+                continue
+            cls_id = NAME2ID[obj]
+            label_path = dst / "labels" / f"{obj}_{img_name}.txt"
+            with open(label_path, "a") as f:
+                f.write(f"{cls_id} {' '.join(f'{v:.6f}' for v in box)}\n")
+    print(f"[OK] 转换完成，标签输出至 {dst / 'labels'}")
 
 
 def main():
-    log(f"RAW exists: {RAW.exists()}")
-    log(f"IMG_DIR exists: {IMG_DIR.exists()}")
-
-    if not RAW.exists():
-        log("[错误] 找不到数据集")
+    parser = argparse.ArgumentParser(description="MVTec AD 掩码 -> YOLO 框标注")
+    parser.add_argument("--src", type=Path, default=ROOT / "data" / "raw" / "mvtec_ad")
+    parser.add_argument("--dst", type=Path, default=ROOT / "data" / "processed")
+    args = parser.parse_args()
+    if not args.src.exists():
+        print(f"[FATAL] 未找到 {args.src}")
         return
-    if not IMG_DIR.exists():
-        log("[错误] 请先跑 preprocess.py")
-        return
-
-    LAB_DIR.mkdir(parents=True, exist_ok=True)
-    count = 0
-    fail = 0
-
-    for split in ["train", "test", "val"]:
-        split_dir = RAW / split
-        if not split_dir.exists():
-            continue
-        for cls_name in CLASSES:
-            gt_dir = find_ground_truth(split_dir, cls_name)
-            if gt_dir is None:
-                continue
-            cls_id = CLASS2ID[cls_name]
-            for mask_path in gt_dir.glob("*.png"):
-                bbox = mask_to_bbox(mask_path)
-                if bbox is None:
-                    fail += 1
-                    continue
-                out_txt = LAB_DIR / mask_path.with_suffix(".txt").name
-                cx, cy, nw, nh = bbox
-                with open(out_txt, "w", encoding="utf-8") as f:
-                    f.write(f"{cls_id} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}\n")
-                count += 1
-
-    log(f"[完成] 生成标注数: {count}, 无标注/失败: {fail}")
-
-    # 类别统计
-    c = Counter()
-    for txt in LAB_DIR.rglob("*.txt"):
-        for line in open(txt, encoding="utf-8"):
-            parts = line.strip().split()
-            if parts:
-                c[parts[0]] += 1
-
-    stat_path = LAB_DIR / "class_count.txt"
-    with open(stat_path, "w", encoding="utf-8") as f:
-        f.write("class_id,class_name,count\n")
-        for cls_id in sorted(c.keys(), key=int):
-            f.write(f"{cls_id},{CLASSES[int(cls_id)]},{c[cls_id]}\n")
-    log(f"类别统计: {stat_path}")
+    convert(args.src, args.dst)
 
 
 if __name__ == "__main__":
