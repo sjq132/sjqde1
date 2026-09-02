@@ -17,3 +17,8 @@ runs/
 # 环境
 .venv/
 env/
+.vscode/ 
+*.zip 
+prompt/ 
+__pycache__/ 
+*.pyc 

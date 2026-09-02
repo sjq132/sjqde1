@@ -1,9 +1,0 @@
-[
-  {
-    "stage": "第三阶段-数据准备",
-    "date": "2026-08-29",
-    "tool": "腾讯元宝",
-    "prompt": "数据预处理脚本路径一直报错 No such file or directory，如何修复",
-    "response_summary": "重写两个脚本，改用基于 __file__ 的自动根目录定位，避免 ../../ 脆弱路径；MVTec AD 放在 data/raw/mvtec_ad/；跑通后生成 data/processed/images 与 labels"
-  }
-]
