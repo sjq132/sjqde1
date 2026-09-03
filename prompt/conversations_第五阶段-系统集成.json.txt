@@ -1,0 +1,27 @@
+{
+  "tool": "腾讯元宝",
+  "project": "基于 YOLOv8 的通用工业零部件多实例缺陷定位与分类系统",
+  "phase": "第五阶段-系统集成",
+  "goal": "将训练好的 YOLOv8 模型集成到 Web 系统，实现上传→检测→结果展示的完整流水线",
+  "conversations": [
+    {
+      "topic": "系统架构设计",
+      "prompt_summary": "Web 系统分层与模块划分",
+      "ai_guidance": "三层 B/S：前端（上传/结果页）、后端 Flask（路由/业务逻辑）、算法层（YOLOv8 推理）",
+      "result": "形成 app/ 应用结构"
+    },
+    {
+      "topic": "模型推理集成",
+      "prompt_summary": "在 Flask 中加载 best.pt 并对上传图片推理",
+      "ai_guidance": "from ultralytics import YOLO; model = YOLO('best.pt'); results = model(img)",
+      "result": "实现检测接口，输出多实例（类别+置信度+边界框）"
+    },
+    {
+      "topic": "前后端联调",
+      "prompt_summary": "上传图片后检测结果未回显",
+      "ai_guidance": "检查表单 enctype、input name、路由 POST 处理",
+      "result": "联调通过，完整流水线跑通"
+    }
+  ],
+  "notes": "本阶段交付可运行的 Web 系统。"
+}

@@ -1,0 +1,27 @@
+{
+  "tool": "腾讯元宝",
+  "project": "基于 YOLOv8 的通用工业零部件多实例缺陷定位与分类系统",
+  "phase": "第四阶段-模型开发",
+  "goal": "基于 YOLOv8 完成模型选型、训练配置、训练执行与指标评估",
+  "conversations": [
+    {
+      "topic": "YOLOv8 选型说明",
+      "prompt_summary": "为什么用 YOLOv8 做多实例缺陷定位与分类",
+      "ai_guidance": "YOLOv8 为 Anchor-Free、解耦分类/回归头，单阶段输出多个目标的类别+边界框，天然适配多实例场景",
+      "result": "确定以 YOLOv8 为核心检测模型"
+    },
+    {
+      "topic": "训练配置",
+      "prompt_summary": "YOLOv8 训练参数与 data.yaml 配置",
+      "ai_guidance": "编写 data.yaml（path/train/val/names），训练命令：model=yolov8n.pt, epochs, batch, imgsz, device",
+      "result": "生成 data.yaml 与 train.py 训练脚本"
+    },
+    {
+      "topic": "训练执行与监控",
+      "prompt_summary": "运行 train.py 并查看训练曲线",
+      "ai_guidance": "python train.py，结果保存在 runs/detect/train；关注 mAP@0.5、Precision、Recall",
+      "result": "完成模型训练，输出 best.pt"
+    }
+  ],
+  "notes": "训练指标需按实际训练结果填写。"
+}
