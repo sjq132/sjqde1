@@ -1,161 +1,133 @@
-"""
-缺陷检测算法模块
-
-职责：加载 YOLOv8 权重，对输入图片做推理，输出标准化检测结果。
-设计要点（对应任务书：算法模块 / 技术方向覆盖）：
-  - YOLOv8 目标检测（深度学习视觉）
-  - 传统图像兜底分析（形态学 + 统计特征，无模型亦可演示闭环）
-  - 模型加载失败 / 无权重时自动降级到兜底模式（demo 可用性保障）
-
-类别：MVTec AD 15 个对象类别，由 data/mvtec_ad.yaml 驱动（单一数据源）
-"""
-
 import os
-import random
-from pathlib import Path
+import sys
+import cv2
+import numpy as np
+from ultralytics import YOLO
 
-import yaml
+# 缺陷类别配置
+DEFECT_YAML = "data/mvtec_ad_defect.yaml"
+DEFECT_NAMES = {
+    0: "good",
+    1: "crack",
+    2: "scratch",
+    3: "broken",
+    4: "contamination",
+    5: "missing_deform",
+    6: "color",
+    7: "hole_poke",
+    8: "glue_cut",
+    9: "other_defect",
+}
 
-ROOT = Path(__file__).resolve().parent.parent
-DATASET_YAML = ROOT / "data" / "mvtec_ad.yaml"
+# 中文映射
+DEFECT_CN = {
+    0: "正常/无缺陷",
+    1: "裂纹",
+    2: "划痕",
+    3: "破损",
+    4: "污染",
+    5: "缺失/变形",
+    6: "颜色异常",
+    7: "孔洞/戳伤",
+    8: "胶切/切割异常",
+    9: "其他缺陷",
+}
 
-# MVTec AD 默认 15 类（当 data.yaml 不可读时的兜底）
-DEFAULT_CLASSES = [
-    "bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather",
-    "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor",
-    "wood", "zipper",
-]
-
-
-def load_class_names():
-    """从 data/mvtec_ad.yaml 读取类别名，保证前后端类别一致（单一数据源）。"""
-    try:
-        with open(DATASET_YAML, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-        names = cfg.get("names", {})
-        if isinstance(names, dict):
-            return [names[i] for i in sorted(names.keys())]
-        return list(names)
-    except Exception:
-        return list(DEFAULT_CLASSES)
+# 英文 key -> 中文
+NAME_TO_CN = {v: DEFECT_CN[k] for k, v in DEFECT_NAMES.items()}
 
 
-CLASS_NAMES = load_class_names()
+def map_label(name):
+    """英文缺陷名 -> 中文"""
+    return NAME_TO_CN.get(str(name), str(name))
 
 
 class DefectDetector:
-    """YOLOv8 检测器；加载失败时降级为传统图像兜底分析。"""
-
-    def __init__(self, weights=None, device=None, conf_thres=0.5):
-        self.weights = weights or os.environ.get("YOLO_WEIGHTS", "yolov8n.pt")
-        self.device = device or os.environ.get("YOLO_DEVICE", "cpu")
-        self.conf_thres = conf_thres
+    def __init__(self, model_path=None, conf=0.25):
+        if model_path is None:
+            model_path = "runs/detect/train-3/weights/best.pt"
+        self.model_path = model_path
+        self.conf = conf
         self.model = None
-        self.fallback = False
-        self._load()
-
-    @property
-    def mode(self):
-        """当前运行模式：yolo（真实模型）或 fallback（兜底）。"""
-        return "yolo" if (self.model is not None and not self.fallback) else "fallback"
-
-    def _load(self):
-        try:
-            from ultralytics import YOLO
-            if Path(self.weights).exists():
-                self.model = YOLO(self.weights)
-                self.fallback = False
-            else:
-                # 权重不存在（如未训练）-> 降级兜底，保证 demo 可跑
-                self.model = None
-                self.fallback = True
-        except Exception as e:
-            print(f"[WARN] YOLO 加载失败，启用兜底模式：{e}")
-            self.model = None
-            self.fallback = True
+        if os.path.exists(model_path):
+            self.model = YOLO(model_path)
+        else:
+            print(f"[WARN] 权重不存在: {model_path}，使用兜底模式")
 
     def detect(self, image_path):
-        """对单张图片推理，返回 [{class, confidence, bbox}]。"""
-        if self.model is not None:
-            try:
-                results = self.model.predict(
-                    source=str(image_path), device=self.device,
-                    conf=self.conf_thres, verbose=False
-                )
-                out = []
-                for r in results:
-                    for box in r.boxes:
-                        cls = int(box.cls[0])
-                        out.append({
-                            "class_name": CLASS_NAMES[cls] if cls < len(CLASS_NAMES) else f"class_{cls}",
-                            "confidence": round(float(box.conf[0]), 4),
-                            "bbox": [round(float(x), 2) for x in box.xyxy[0].tolist()],
-                        })
-                if out:
-                    return out
-                # 模型无输出 -> 仍给兜底结论（无缺陷）
-                return self._traditional_fallback(image_path)
-            except Exception as e:
-                print(f"[WARN] 推理异常，降级兜底：{e}")
-                return self._traditional_fallback(image_path)
-        return self._traditional_fallback(image_path)
+        """检测单张图片，返回列表 of dict"""
+        if self.model is None:
+            # 兜底：随机返回一个缺陷类别（演示用）
+            import random
+            cid = random.randint(1, 9)
+            return [{
+                "class_id": cid,
+                "class_name": DEFECT_NAMES[cid],
+                "class_name_cn": DEFECT_CN[cid],
+                "confidence": 0.5 + random.random() * 0.4,
+                "bbox": [0.1, 0.1, 0.3, 0.3],
+            }]
 
-    def _traditional_fallback(self, image_path):
-        """传统图像分析兜底（形态学 + 统计特征），保证业务闭环可演示。
-
-        真实部署应替换为训练好的模型推理；此处用于：
-          - 未训练时的 demo 演示
-          - 模型异常时的降级可用性
-        """
-        seed = str(image_path)
-        random.seed(seed)
-        # 模拟缺陷定位结果（受控随机，便于演示）
-        n = random.choice([0, 1, 2])
-        results = []
-        for _ in range(n):
-            results.append({
-                "class_name": random.choice(CLASS_NAMES),
-                "confidence": round(random.uniform(0.6, 0.95), 4),
-                "bbox": [
-                    round(random.uniform(0, 0.4), 2),
-                    round(random.uniform(0, 0.4), 2),
-                    round(random.uniform(0.6, 1.0), 2),
-                    round(random.uniform(0.6, 1.0), 2),
-                ],
-            })
-        return results
-
-
-def draw_detections(image_path, detections, out_path):
-    """在图片上绘制检测框，供前端展示。detections = {"results": [...]}。"""
-    try:
-        import cv2
-        results = detections.get("results", []) if isinstance(detections, dict) else detections
-        img = cv2.imread(str(image_path))
-        if img is None:
-            return
-        h, w = img.shape[:2]
+        results = self.model(image_path, conf=self.conf, verbose=False)
+        detections = []
         for r in results:
-            bbox = r.get("bbox") or [0, 0, 1, 1]
-            x1, y1, x2, y2 = bbox
-            # bbox 可为归一化坐标或像素坐标，自动判断
-            if all(v <= 1.0 for v in bbox[:2]) and x2 <= 1.0:
-                x1, y1, x2, y2 = x1 * w, y1 * h, x2 * w, y2 * h
-            x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-            label = f"{r.get('class_name', 'defect')} {r.get('confidence', 0):.2f}"
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            cv2.putText(img, label, (x1, max(y1 - 6, 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-        cv2.imwrite(str(out_path), img)
-    except Exception as e:
-        print(f"[WARN] 标注图绘制失败：{e}")
+            if r.boxes is None or len(r.boxes) == 0:
+                # 无缺陷 -> 正常
+                return [{
+                    "class_id": 0,
+                    "class_name": "good",
+                    "class_name_cn": DEFECT_CN[0],
+                    "confidence": 1.0,
+                    "bbox": [],
+                }]
+            for box in r.boxes:
+                cls_id = int(box.cls.item())
+                conf = float(box.conf.item())
+                xyxy = box.xyxy.cpu().numpy()[0].tolist()
+                detections.append({
+                    "class_id": cls_id,
+                    "class_name": DEFECT_NAMES.get(cls_id, "unknown"),
+                    "class_name_cn": DEFECT_CN.get(cls_id, "未知"),
+                    "confidence": conf,
+                    "bbox": xyxy,
+                })
+        return detections
+
+    def draw_detections(self, image_path, detections, output_path=None):
+        """在图片上画框，保存或返回"""
+        img = cv2.imread(image_path)
+        if img is None:
+            return None
+        h, w = img.shape[:2]
+        for d in detections:
+            if not d["bbox"]:
+                continue
+            x1, y1, x2, y2 = d["bbox"]
+            # xyxy 可能是归一化的，转像素
+            if max(x1, y2) <= 1.0:
+                x1, y1, x2, y2 = int(x1 * w), int(y1 * h), int(x2 * w), int(y2 * h)
+            else:
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            label = f"{d['class_name_cn']} {d['confidence']:.2f}"
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(img, label, (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        if output_path:
+            cv2.imwrite(output_path, img)
+        return img
 
 
-# 模块自测
+# 自测
 if __name__ == "__main__":
-    d = DefectDetector()
-    print("类别数：", len(CLASS_NAMES))
-    print("模式：", "fallback" if d.fallback else "yolo")
-    import sys
-    sample = sys.argv[1] if len(sys.argv) > 1 else __file__
-    print(d.detect(sample))
+    if len(sys.argv) < 2:
+        print("用法: python -X utf8 app/detector.py <图片路径>")
+        sys.exit(1)
+    img_path = sys.argv[1]
+    print(f"模式: {'yolo' if os.path.exists('runs/detect/train-3/weights/best.pt') else '兜底'}")
+    det = DefectDetector()
+    results = det.detect(img_path)
+    for r in results:
+        print(f"  {r['class_name_cn']} ({r['class_name']}) conf={r['confidence']:.3f}")
+def draw_detections(image_path, detections, output_path=None):
+    det = DefectDetector()
+    return det.draw_detections(image_path, detections, output_path)

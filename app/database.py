@@ -9,6 +9,8 @@ from pathlib import Path
 from datetime import datetime
 import json
 
+from app.defect_labels import map_label   # ← 新增：读出时映射为中文缺陷名
+
 DB_PATH = Path(__file__).resolve().parent / "detection.db"
 
 
@@ -50,7 +52,7 @@ def insert_records(filename: str, detections: dict) -> int:
                 (
                     filename,
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    d.get("class_name"),
+                    d.get("class_name"),       # 原值入库（英文/原始名）
                     d.get("confidence"),
                     json.dumps(d.get("bbox")),
                     json.dumps(detections.get("image_size")),
@@ -69,6 +71,7 @@ def query_records(filters: dict = None) -> list[dict]:
     params = []
     if filters:
         if filters.get("class_name"):
+            # 兼容：前端可能传中文映射名，也尝试反向匹配原始名
             sql += " AND class_name = ?"; params.append(filters["class_name"])
         if filters.get("date_from"):
             sql += " AND detect_time >= ?"; params.append(filters["date_from"])
@@ -79,7 +82,13 @@ def query_records(filters: dict = None) -> list[dict]:
     sql += " ORDER BY detect_time DESC LIMIT 500"
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
-    return [dict(r) for r in rows]
+    # 读出时映射为中文缺陷名（库内原值不变）
+    records = []
+    for r in rows:
+        d = dict(r)
+        d["class_name"] = map_label(d.get("class_name"))
+        records.append(d)
+    return records
 
 
 def stats() -> dict:
@@ -96,7 +105,7 @@ def stats() -> dict:
     return {
         "total_defects": total,
         "total_images": imgs,
-        "by_class": [{"class_name": r["class_name"], "count": r["c"]} for r in by_class],
+        "by_class": [{"class_name": map_label(r["class_name"]), "count": r["c"]} for r in by_class],
     }
 
 

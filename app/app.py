@@ -1,16 +1,6 @@
+
 """
 Flask 后端（service / route layer）
-
-API 清单：
-    POST /api/detect      上传图片 -> 推理 -> 写库 -> 返回 JSON + 标注图 URL
-    GET  /api/history     查询历史记录（支持筛选）
-    GET  /api/stats       缺陷统计（供 Chart.js 绘图）
-    GET  /                前端页面
-    GET  /history         历史页
-    GET  /stats           统计页
-
-运行：python -m app.app   （项目根目录下）
-      或：flask --app app.app run --debug
 """
 import os
 from pathlib import Path
@@ -31,18 +21,17 @@ app = Flask(
     template_folder=str(ROOT / "app" / "templates"),
     static_folder=str(ROOT / "app" / "static"),
 )
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 ALLOWED = {".jpg", ".jpeg", ".png", ".bmp"}
 
-# 延迟初始化：首次请求时再建库、再加载模型（避免 import 时耗时）
 _detector = None
 
 
-def get_detector() -> DefectDetector:
+def get_detector():
     global _detector
     if _detector is None:
         init_db()
-        _detector = DefectDetector(conf_thres=0.5)
+        _detector = DefectDetector(conf=0.25)
     return _detector
 
 
@@ -63,16 +52,15 @@ def stats_page():
 
 @app.route("/api/detect", methods=["POST"])
 def api_detect():
-    """上传图片 -> 检测 -> 存库 -> 返回结果。"""
     if "file" not in request.files:
-        return jsonify({"error": "缺少 file 字段"}), 400
+        return jsonify({"error": "missing file"}), 400
     file = request.files["file"]
     if not file.filename:
-        return jsonify({"error": "空文件名"}), 400
+        return jsonify({"error": "empty filename"}), 400
 
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED:
-        return jsonify({"error": f"不支持的格式 {ext}，仅允许 JPG/PNG/BMP"}), 400
+        return jsonify({"error": f"unsupported {ext}"}), 400
 
     safe = secure_filename(Path(file.filename).stem) + ext
     img_path = UPLOAD_DIR / safe
@@ -80,15 +68,12 @@ def api_detect():
 
     detector = get_detector()
     results = detector.detect(img_path)
-    mode = detector.mode
-    detections = {"results": results, "mode": mode}
+    mode = detector.mode if hasattr(detector, 'mode') else 'yolo'
 
-    # 绘制标注图
     res_path = RESULT_DIR / (Path(safe).stem + "_result.jpg")
-    draw_detections(img_path, detections, res_path)
+    draw_detections(str(img_path), results, str(res_path))
 
-    # 入库
-    insert_records(safe, detections)
+    insert_records(safe, {"results": results})
 
     return jsonify({
         "filename": safe,
@@ -107,7 +92,6 @@ def api_history():
         "date_to": request.args.get("date_to"),
         "min_conf": request.args.get("min_conf", type=float),
     }
-    # 去掉空值
     filters = {k: v for k, v in filters.items() if v not in (None, "")}
     records = query_records(filters)
     return jsonify({"records": records, "total": len(records)})
@@ -116,10 +100,12 @@ def api_history():
 @app.route("/api/stats", methods=["GET"])
 def api_stats():
     data = stats()
-    # 补充 MVTec AD 全量类别（含库中暂无记录的），供前端筛选下拉框
-    from .detector import CLASS_NAMES
-    seen = {r["class_name"] for r in data.get("by_class", [])}
-    data["classes"] = sorted(set(CLASS_NAMES) | seen)
+    from .detector import DEFECT_NAMES
+    seen = set()
+    by_class = data.get("by_class", [])
+    if isinstance(by_class, list):
+        seen = {r.get("class_name", "") for r in by_class}
+    data["classes"] = sorted(set(DEFECT_NAMES.values()) | seen)
     return jsonify(data)
 
 

@@ -22,3 +22,12 @@ env/
 prompt/ 
 __pycache__/ 
 *.pyc 
+app/detection.db 
+app/*.bak 
+data/processed/uploads/ 
+data/processed/results/ 
+data/processed/test_img.jpg 
+data/processed/test_result.jpg 
+data/processed/upload_api.jpg 
+*.pt 
+runs/detect/ 
